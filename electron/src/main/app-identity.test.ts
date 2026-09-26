@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createMacApplicationMenuTemplate,
@@ -20,11 +22,7 @@ describe('installAppIdentity', () => {
 
     expect(template[0]).toMatchObject({ label: 'VoiceStudio' });
     expect(template[0]?.submenu).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ role: 'about', label: 'About VoiceStudio' }),
-        expect.objectContaining({ role: 'hide', label: 'Hide VoiceStudio' }),
-        expect.objectContaining({ role: 'quit', label: 'Quit VoiceStudio' }),
-      ]),
+      expect.arrayContaining([{ role: 'about' }, { role: 'hide' }, { role: 'quit' }]),
     );
     expect(template.slice(1)).toEqual([
       { role: 'fileMenu' },
@@ -32,6 +30,15 @@ describe('installAppIdentity', () => {
       { role: 'viewMenu' },
       { role: 'windowMenu' },
     ]);
+  });
+
+  it('installs the identity before Electron begins ready initialization', () => {
+    const entrypoint = readFileSync(resolve(process.cwd(), 'src/main/index.ts'), 'utf8');
+    const identityInstall = entrypoint.indexOf('installAppIdentity(app);');
+    const readyInitialization = entrypoint.indexOf('.whenReady()');
+
+    expect(identityInstall).toBeGreaterThanOrEqual(0);
+    expect(readyInitialization).toBeGreaterThan(identityInstall);
   });
 
   it('brands the About panel and installs the macOS menu', () => {

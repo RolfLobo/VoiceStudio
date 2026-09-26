@@ -12,15 +12,15 @@ export function createMacApplicationMenuTemplate(): MenuItemConstructorOptions[]
     {
       label: DESKTOP_APP_NAME,
       submenu: [
-        { role: 'about', label: `About ${DESKTOP_APP_NAME}` },
+        { role: 'about' },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
-        { role: 'hide', label: `Hide ${DESKTOP_APP_NAME}` },
+        { role: 'hide' },
         { role: 'hideOthers' },
         { role: 'unhide' },
         { type: 'separator' },
-        { role: 'quit', label: `Quit ${DESKTOP_APP_NAME}` },
+        { role: 'quit' },
       ],
     },
     { role: 'fileMenu' },

@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import {
   copyFileSync,
   existsSync,
+  mkdtempSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -10,7 +11,6 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -19,16 +19,20 @@ const here = dirname(fileURLToPath(import.meta.url));
 const electronRoot = resolve(here, '..');
 const repoRoot = resolve(electronRoot, '..');
 const require = createRequire(import.meta.url);
+const defaultCacheRoot = join(electronRoot, 'node_modules', '.cache', 'voicestudio-electron-dev');
 
 export function createMacDevBundlePlan({
   electronExecutable,
   electronVersion,
   appVersion,
   architecture = process.arch,
-  cacheRoot = join(tmpdir(), 'voicestudio-electron-dev'),
+  cacheFingerprint = '',
+  cacheRoot = defaultCacheRoot,
 }) {
   const sourceBundle = resolve(dirname(electronExecutable), '../..');
-  const cacheKey = `${electronVersion}-${appVersion}-${architecture}`;
+  const cacheKey = [electronVersion, appVersion, architecture, cacheFingerprint]
+    .filter(Boolean)
+    .join('-');
   const destinationRoot = join(cacheRoot, cacheKey);
   const destinationBundle = join(destinationRoot, `${APP_NAME}.app`);
 
@@ -67,20 +71,23 @@ export function prepareMacDevElectron({
   electronVersion,
   appVersion,
   iconPath,
-  cacheRoot = join(tmpdir(), 'voicestudio-electron-dev'),
+  cacheRoot = defaultCacheRoot,
 }) {
+  const icon = statSync(iconPath);
+  const cacheFingerprint = `${icon.size}-${String(icon.mtimeMs).replace('.', '_')}`;
   const plan = createMacDevBundlePlan({
     electronExecutable,
     electronVersion,
     appVersion,
+    cacheFingerprint,
     cacheRoot,
   });
   const expectedManifest = JSON.stringify({
     electronVersion,
     appVersion,
     architecture: process.arch,
-    iconSize: statSync(iconPath).size,
-    iconModified: statSync(iconPath).mtimeMs,
+    iconSize: icon.size,
+    iconModified: icon.mtimeMs,
   });
 
   if (
@@ -92,7 +99,7 @@ export function prepareMacDevElectron({
   }
 
   mkdirSync(cacheRoot, { recursive: true });
-  const stagingRoot = join(cacheRoot, `.staging-${process.pid}`);
+  const stagingRoot = mkdtempSync(join(cacheRoot, '.staging-'));
   const stagingBundle = join(stagingRoot, `${APP_NAME}.app`);
   rmSync(stagingRoot, { recursive: true, force: true });
   mkdirSync(stagingRoot);
@@ -110,10 +117,28 @@ export function prepareMacDevElectron({
     replacePlistValue(infoPlist, 'CFBundleVersion', appVersion);
     copyFileSync(iconPath, join(stagingBundle, 'Contents', 'Resources', `${APP_NAME}.icns`));
     run('codesign', ['--force', '--deep', '--sign', '-', stagingBundle]);
+    writeFileSync(join(stagingRoot, 'brand-manifest.json'), expectedManifest);
 
-    rmSync(plan.destinationRoot, { recursive: true, force: true });
-    renameSync(stagingRoot, plan.destinationRoot);
-    writeFileSync(plan.manifest, expectedManifest);
+    try {
+      renameSync(stagingRoot, plan.destinationRoot);
+    } catch (error) {
+      if (
+        !(
+          error instanceof Error &&
+          'code' in error &&
+          (error.code === 'EEXIST' || error.code === 'ENOTEMPTY')
+        )
+      ) {
+        throw error;
+      }
+      if (
+        !existsSync(plan.destinationExecutable) ||
+        !existsSync(plan.manifest) ||
+        readFileSync(plan.manifest, 'utf8') !== expectedManifest
+      ) {
+        throw new Error('Concurrent macOS development bundle creation produced an invalid cache');
+      }
+    }
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
   }
@@ -138,7 +163,6 @@ function launchElectronVite() {
       electronVersion,
       appVersion,
       iconPath: join(repoRoot, 'frontend', 'src-tauri', 'icons', 'icon.icns'),
-      cacheRoot: join(tmpdir(), 'voicestudio-electron-dev'),
     });
   }
 
