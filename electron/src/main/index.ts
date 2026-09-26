@@ -21,6 +21,7 @@ import {
   observeMainProcessTask,
 } from './main-error-journal';
 import { activateLiveWindow, isLiveWindow } from './window-safety';
+import { installAppIdentity } from './app-identity';
 
 // Packaged GUI launches can inherit a short-lived terminal pipe. When that
 // launcher exits, diagnostic console writes emit EPIPE asynchronously and can
@@ -38,6 +39,7 @@ const RENDERER_DIR = join(here, '../renderer');
 const BACKGROUND = '#0a0a0a';
 const OVERLAY = { color: '#00000000', symbolColor: '#737373', height: 52 };
 
+installAppIdentity(app);
 registerAppScheme();
 
 const mainErrors = new MainErrorJournal(
